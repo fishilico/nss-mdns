@@ -65,6 +65,38 @@
 #define _nss_mdns_gethostbyname_r  _nss_mdns_minimal_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns_minimal_gethostbyaddr_r
 #endif
+enum nss_status _nss_mdns_gethostbyname4_r(
+    const char *name,
+    struct gaih_addrtuple **pat,
+    char *buffer,
+    size_t buflen,
+    int *errnop,
+    int *h_errnop,
+    int32_t *ttlp);
+enum nss_status _nss_mdns_gethostbyname2_r(
+    const char *name,
+    int af,
+    struct hostent * result,
+    char *buffer,
+    size_t buflen,
+    int *errnop,
+    int *h_errnop);
+enum nss_status _nss_mdns_gethostbyname_r(
+    const char *name,
+    struct hostent *result,
+    char *buffer,
+    size_t buflen,
+    int *errnop,
+    int *h_errnop);
+enum nss_status _nss_mdns_gethostbyaddr_r(
+    const void* addr,
+    int len,
+    int af,
+    struct hostent *result,
+    char *buffer,
+    size_t buflen,
+    int *errnop,
+    int *h_errnop);
 
 /* Maximum number of entries to return */
 #define MAX_ENTRIES 16
@@ -598,8 +630,6 @@ enum nss_status _nss_mdns_gethostbyname4_r(
 
     struct user_gai_buf u;
     enum nss_status status = NSS_STATUS_UNAVAIL;
-    int i;
-    size_t l, idx;
     void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata);
     void (*ipv6_func)(const ipv6_address_t *ipv6, void *userdata);
     int name_allowed;
@@ -654,7 +684,7 @@ enum nss_status _nss_mdns_gethostbyname4_r(
         goto finish;
     }
 
-    u.list_base = (struct user_gai_buf*) buffer;
+    u.list_base = (struct gaih_addrtuple*) buffer;
     u.list_size = buflen / sizeof( struct user_gai_buf );
     u.list_idx = 0;
     u.wrote_name = 0;
