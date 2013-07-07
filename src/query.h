@@ -30,6 +30,7 @@ typedef struct {
 
 typedef struct {
     uint8_t address[16];
+    uint32_t if_idx;
 } ipv6_address_t;
 
 int mdns_open_socket(void);

@@ -41,22 +41,27 @@
 
 #if defined(NSS_IPV4_ONLY) && ! defined(MDNS_MINIMAL)
 #define _nss_mdns_gethostbyname2_r _nss_mdns4_gethostbyname2_r
+#define _nss_mdns_gethostbyname4_r _nss_mdns4_gethostbyname4_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns4_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns4_gethostbyaddr_r
 #elif defined(NSS_IPV4_ONLY) && defined(MDNS_MINIMAL)
 #define _nss_mdns_gethostbyname2_r _nss_mdns4_minimal_gethostbyname2_r
+#define _nss_mdns_gethostbyname4_r _nss_mdns4_minimal_gethostbyname4_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns4_minimal_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns4_minimal_gethostbyaddr_r
 #elif defined(NSS_IPV6_ONLY) && ! defined(MDNS_MINIMAL)
 #define _nss_mdns_gethostbyname2_r _nss_mdns6_gethostbyname2_r
+#define _nss_mdns_gethostbyname4_r _nss_mdns6_gethostbyname4_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns6_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns6_gethostbyaddr_r
 #elif defined(NSS_IPV6_ONLY) && defined(MDNS_MINIMAL)
 #define _nss_mdns_gethostbyname2_r _nss_mdns6_minimal_gethostbyname2_r
+#define _nss_mdns_gethostbyname4_r _nss_mdns6_minimal_gethostbyname4_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns6_minimal_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns6_minimal_gethostbyaddr_r
 #elif defined(MDNS_MINIMAL)
 #define _nss_mdns_gethostbyname2_r _nss_mdns_minimal_gethostbyname2_r
+#define _nss_mdns_gethostbyname4_r _nss_mdns_minimal_gethostbyname4_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns_minimal_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns_minimal_gethostbyaddr_r
 #endif
@@ -81,6 +86,12 @@ struct userdata {
         char *name[MAX_ENTRIES];
     } data;
 };
+struct user_gai_buf {
+    struct gaih_addrtuple *list_base;
+    int list_size;
+    int list_idx;
+    int wrote_name;
+};
 
 #ifndef NSS_IPV6_ONLY
 static void ipv4_callback(const ipv4_address_t *ipv4, void *userdata) {
@@ -92,6 +103,21 @@ static void ipv4_callback(const ipv4_address_t *ipv4, void *userdata) {
 
     u->data.ipv4[u->count++] = *ipv4;
     u->data_len += sizeof(ipv4_address_t);
+}
+static void ipv4_gai_callback(const ipv4_address_t *ipv4, void *userdata) {
+    struct user_gai_buf *u = userdata;
+    assert(ipv4 && userdata);
+
+    if (u->list_idx+1 >= u->list_size)
+        return;
+
+    u->list_base[u->list_idx].name = 0;
+    u->list_base[u->list_idx].family = AF_INET;
+    u->list_base[u->list_idx].addr[0] = ipv4->address;
+    u->list_base[u->list_idx].scopeid = 0;
+    if (u->list_idx > 0) u->list_base[u->list_idx-1].next = &u->list_base[u->list_idx];
+    u->list_base[u->list_idx].next = 0;
+    u->list_idx += 1;
 }
 #endif
 
@@ -105,6 +131,21 @@ static void ipv6_callback(const ipv6_address_t *ipv6, void *userdata) {
 
     u->data.ipv6[u->count++] = *ipv6;
     u->data_len += sizeof(ipv6_address_t);
+}
+static void ipv6_gai_callback(const ipv6_address_t *ipv6, void *userdata) {
+    struct user_gai_buf *u = userdata;
+    assert(ipv6 && userdata);
+
+    if (u->list_idx+1 >= u->list_size)
+        return;
+
+    u->list_base[u->list_idx].name = 0;
+    u->list_base[u->list_idx].family = AF_INET6;
+    memcpy(u->list_base[u->list_idx].addr, ipv6->address, sizeof(u->list_base[u->list_idx].addr));
+    u->list_base[u->list_idx].scopeid = ipv6->if_idx;
+    if (u->list_idx > 0) u->list_base[u->list_idx-1].next = &u->list_base[u->list_idx];
+    u->list_base[u->list_idx].next = 0;
+    u->list_idx += 1;
 }
 #endif
 
@@ -254,7 +295,7 @@ static char** get_search_domains(void) {
     while (!feof(f)) {
         char *start = NULL;
         char ln[512];
-	  
+
         if (!fgets(ln, sizeof(ln), f))
             break;
 
@@ -387,16 +428,16 @@ enum nss_status _nss_mdns_gethostbyname2_r(
             char **p;
             
             /* Try to concatenate host names */
-	    for (p = domains; *p; p++) {
+            for (p = domains; *p; p++) {
                 int fullnamesize;
                 char *fullname;
                 
-	        fullnamesize = strlen(name) + strlen(*p) + 2;
+                fullnamesize = strlen(name) + strlen(*p) + 2;
 
                 if (!(fullname = malloc(fullnamesize)))
                     break;
                 
-		snprintf(fullname, fullnamesize, "%s.%s", name, *p);
+                snprintf(fullname, fullnamesize, "%s.%s", name, *p);
 
                 if (verify_name_allowed(fullname)) {
                     int r;
@@ -419,12 +460,12 @@ enum nss_status _nss_mdns_gethostbyname2_r(
                         /* Lookup suceeded, but nothing found */
                         status = NSS_STATUS_NOTFOUND;
                     
-		} else
+                } else
                     free(fullname);
-	    }
-            
-	    free_domains(domains);
-	}
+            }
+
+            free_domains(domains);
+        }
     }
 #endif /* HONOUR_SEARCH_DOMAINS */
 #endif /* ENABLE_AVAHI */
@@ -537,6 +578,260 @@ enum nss_status _nss_mdns_gethostbyname2_r(
 
     status = NSS_STATUS_SUCCESS;
     
+finish:
+#ifdef ENABLE_LEGACY
+    if (fd >= 0)
+        close(fd);
+#endif
+
+    return status;
+}
+
+enum nss_status _nss_mdns_gethostbyname4_r(
+    const char *name,
+    struct gaih_addrtuple **pat,
+    char *buffer,
+    size_t buflen,
+    int *errnop,
+    int *h_errnop,
+    int32_t *ttlp) {
+
+    struct user_gai_buf u;
+    enum nss_status status = NSS_STATUS_UNAVAIL;
+    int i;
+    size_t l, idx;
+    void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata);
+    void (*ipv6_func)(const ipv6_address_t *ipv6, void *userdata);
+    int name_allowed;
+    int af = AF_UNSPEC;
+
+#ifdef ENABLE_AVAHI
+    int avahi_works = 1;
+    void * data[32];
+#endif
+
+#ifdef ENABLE_LEGACY
+    int fd = -1;
+#endif
+
+    if (pat) {
+	af = (*pat)->family;
+    }
+
+/*     DEBUG_TRAP; */
+
+#ifdef NSS_IPV6_ONLY
+    if (af == AF_UNSPEC)
+        af = AF_INET6;
+#endif
+
+#ifdef NSS_IPV4_ONLY
+    if (af == AF_UNSPEC)
+        af = AF_INET;
+#endif
+
+#ifdef NSS_IPV4_ONLY
+    if (af != AF_INET)
+#elif NSS_IPV6_ONLY
+    if (af != AF_INET6)
+#else
+    if (af != AF_INET && af != AF_INET6 && af != AF_UNSPEC)
+#endif
+    {
+        *errnop = EINVAL;
+        *h_errnop = NO_RECOVERY;
+
+        goto finish;
+    }
+
+    if (buflen <
+        sizeof(struct gaih_addrtuple))  {
+
+        *errnop = ERANGE;
+        *h_errnop = NO_RECOVERY;
+        status = NSS_STATUS_TRYAGAIN;
+
+        goto finish;
+    }
+
+    u.list_base = (struct user_gai_buf*) buffer;
+    u.list_size = buflen / sizeof( struct user_gai_buf );
+    u.list_idx = 0;
+    u.wrote_name = 0;
+
+#ifdef NSS_IPV6_ONLY
+    ipv4_func = NULL;
+#else
+    ipv4_func = (af == AF_INET || af == AF_UNSPEC) ? ipv4_gai_callback : NULL;
+#endif
+
+#ifdef NSS_IPV4_ONLY
+    ipv6_func = NULL;
+#else
+    ipv6_func = (af == AF_INET6 || af == AF_UNSPEC) ? ipv6_gai_callback : NULL;
+#endif
+
+    name_allowed = verify_name_allowed(name);
+
+#ifdef ENABLE_AVAHI
+
+    if (avahi_works && name_allowed) {
+        int r;
+
+        if (af == AF_INET || af == AF_UNSPEC) {
+            if ((r = avahi_resolve_name(AF_INET, name, data)) < 0) {
+                avahi_works = 0;
+            } else if (r == 0 && ipv4_func) {
+                ipv4_func((ipv4_address_t*) data, &u);
+            } else {
+                status = NSS_STATUS_NOTFOUND;
+            }
+        }
+        if (af == AF_INET6 || af == AF_UNSPEC) {
+            if ((r = avahi_resolve_name(AF_INET6, name, data)) < 0) {
+                avahi_works = 0;
+            } else if (r == 0 && ipv6_func) {
+                ipv6_func((ipv6_address_t*)data, &u);
+            } else {
+                status = NSS_STATUS_NOTFOUND;
+            }
+        }
+    }
+
+#ifdef HONOUR_SEARCH_DOMAINS
+    if (u.list_idx == 0 && avahi_works && !ends_with(name, ".")) {
+        char **domains;
+
+        if ((domains = get_search_domains())) {
+            char **p;
+
+            /* Try to concatenate host names */
+            for (p = domains; *p; p++) {
+                int fullnamesize;
+                char *fullname;
+
+                fullnamesize = strlen(name) + strlen(*p) + 2;
+
+                if (!(fullname = malloc(fullnamesize)))
+                    break;
+
+                snprintf(fullname, fullnamesize, "%s.%s", name, *p);
+
+                if (verify_name_allowed(fullname)) {
+                    int r;
+
+                    if (af == AF_INET || af == AF_UNSPEC) {
+                        r = avahi_resolve_name(AF_INET, fullname, data);
+                        if (r < 0) {
+                            /* Lookup failed */
+                            avahi_works = 0;
+                            free(fullname);
+                            break;
+                        } else if (r == 0) {
+                            /* Lookup succeeded */
+                            if (ipv4_func)
+                                ipv4_func((ipv4_address_t*) data, &u);
+                        }
+                    }
+                    if (af == AF_INET6 || af == AF_UNSPEC) {
+                        r = avahi_resolve_name(AF_INET6, fullname, data);
+                        if (r < 0) {
+                            /* Lookup failed */
+                            avahi_works = 0;
+                            free(fullname);
+                            break;
+                        } else if (r == 0) {
+                            /* Lookup succeeded */
+                            if (ipv6_func)
+                                ipv6_func((ipv6_address_t*)data, &u);
+                        }
+                    }
+                    free(fullname);
+                    if (u.list_idx > 0) break;
+
+                } else
+                    free(fullname);
+            }
+
+            free_domains(domains);
+        }
+    }
+#endif /* HONOUR_SEARCH_DOMAINS */
+#endif /* ENABLE_AVAHI */
+
+#if defined(ENABLE_LEGACY) && defined(ENABLE_AVAHI)
+    if (u.list_idx == 0 && !avahi_works)
+#endif
+
+#if defined(ENABLE_LEGACY)
+    {
+        if ((fd = mdns_open_socket()) < 0) {
+            *errnop = errno;
+            *h_errnop = NO_RECOVERY;
+            goto finish;
+        }
+
+        if (name_allowed) {
+            /* Ignore return value */
+            mdns_query_name(fd, name, ipv4_func, ipv6_func, &u);
+
+            if (!u.list_idx)
+                status = NSS_STATUS_NOTFOUND;
+        }
+
+#ifdef HONOUR_SEARCH_DOMAINS
+        if (u.list_idx == 0 && !ends_with(name, ".")) {
+            char **domains;
+
+            /* Try the search domains if the user did not use a traling '.' */
+
+            if ((domains = get_search_domains())) {
+                char **p;
+
+                for (p = domains; *p; p++) {
+                    int fullnamesize = 0;
+                    char *fullname = NULL;
+
+                    fullnamesize = strlen(name) + strlen(*p) + 2;
+                    if (!(fullname = malloc(fullnamesize)))
+                        break;
+
+                    snprintf(fullname, fullnamesize, "%s.%s", name, *p);
+
+                    if (verify_name_allowed(fullname)) {
+
+                        /* Ignore return value */
+                        mdns_query_name(fd, fullname, ipv4_func, ipv6_func, &u);
+
+                        if (u.list_idx > 0) {
+                            /* We found something, so let's quit */
+                            free(fullname);
+                            break;
+                        } else
+                            status = NSS_STATUS_NOTFOUND;
+
+                    }
+
+                    free(fullname);
+                }
+
+                free_domains(domains);
+            }
+        }
+#endif /* HONOUR_SEARCH_DOMAINS */
+    }
+#endif /* ENABLE_LEGACY */
+
+    if (u.list_idx == 0) {
+        *errnop = ETIMEDOUT;
+        *h_errnop = HOST_NOT_FOUND;
+        goto finish;
+    }
+
+    *pat = (struct gaih_addrtuple*) buffer;
+
+    status = NSS_STATUS_SUCCESS;
+
 finish:
 #ifdef ENABLE_LEGACY
     if (fd >= 0)
@@ -660,7 +955,7 @@ enum nss_status _nss_mdns_gethostbyaddr_r(
             goto finish;
         }
 
-	r = -1;
+        r = -1;
 
 #if ! defined(NSS_IPV6_ONLY) && ! defined(NSS_IPV4_ONLY)
         if (af == AF_INET)

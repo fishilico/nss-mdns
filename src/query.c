@@ -263,7 +263,7 @@ static int send_dns_packet(int fd, struct dns_packet *p) {
     return n_sent;
 }
 
-static int recv_dns_packet(int fd, struct dns_packet **ret_packet, uint8_t *ret_ttl, struct timeval *end) {
+static int recv_dns_packet(int fd, struct dns_packet **ret_packet, uint8_t *ret_ttl, uint32_t *if_idx, struct timeval *end) {
     struct dns_packet *p= NULL;
     struct msghdr msg;
     struct iovec io;
@@ -286,6 +286,10 @@ static int recv_dns_packet(int fd, struct dns_packet **ret_packet, uint8_t *ret_
     msg.msg_controllen = sizeof(aux);
     msg.msg_flags = 0;
     
+#ifndef IP_PKTINFO
+    *if_idx = 0;
+#endif
+
     for (;;) {
         ssize_t l;
         int r;
@@ -300,10 +304,18 @@ static int recv_dns_packet(int fd, struct dns_packet **ret_packet, uint8_t *ret_
 #else
                 if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL)
 #endif
-		{
+                {
                     *ret_ttl = (uint8_t) (*(uint32_t*) CMSG_DATA(cmsg));
                     break;
                 }
+#ifdef IP_PKTINFO
+                if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO)
+                {
+                    *if_idx = ((struct in_pktinfo*) CMSG_DATA(cmsg))->ipi_ifindex;
+                    break;
+                }
+#endif
+
             }
                      
             if (!cmsg)
@@ -427,9 +439,10 @@ static int process_name_response(int fd, const char *name, usec_t timeout, uint1
 
     while (!done) {
         uint8_t ttl;
+        uint32_t if_idx;
         int r;
 
-        if ((r = recv_dns_packet(fd, &p, &ttl, &end)) < 0)
+        if ((r = recv_dns_packet(fd, &p, &ttl, &if_idx, &end)) < 0)
             return -1;
         else if (r > 0) /* timeout */
             return 1;
@@ -488,6 +501,7 @@ static int process_name_response(int fd, const char *name, usec_t timeout, uint1
                         rdlength == sizeof(ipv6_address_t)) {
                         
                         ipv6_address_t ipv6;
+                        ipv6.if_idx = if_idx;
                         
                         if (dns_packet_consume_bytes(p, &ipv6, sizeof(ipv6_address_t)) < 0)
                             break;
@@ -584,9 +598,10 @@ static int process_reverse_response(int fd, const char *name, usec_t timeout, ui
 
     while (!done) {
         uint8_t ttl;
+        uint32_t if_idx;
         int r;
 
-        if ((r = recv_dns_packet(fd, &p, &ttl, &end)) < 0)
+        if ((r = recv_dns_packet(fd, &p, &ttl, &if_idx, &end)) < 0)
             return -1;
         else if (r > 0) /* timeout */
             return 1;

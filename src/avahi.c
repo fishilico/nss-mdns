@@ -26,6 +26,7 @@
 #include <sys/socket.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <sys/un.h>
@@ -34,6 +35,7 @@
 
 #include "avahi.h"
 #include "util.h"
+#include "query.h"
 
 #define WHITESPACE " \t"
 
@@ -93,7 +95,8 @@ int avahi_resolve_name(int af, const char* name, void* data) {
     p = ln+1;
     p += strspn(p, WHITESPACE);
 
-    /* Skip interface */
+    /* Parse interface */
+    if (af == AF_INET6) ((ipv6_address_t*)data)->if_idx = strtoul(p, 0, 10);
     p += strcspn(p, WHITESPACE);
     p += strspn(p, WHITESPACE);
 

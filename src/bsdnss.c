@@ -258,6 +258,8 @@ __nss_bsdcompat_getaddrinfo(void *retval, void *mdata __unused, va_list ap)
 			ai->ai_addrlen = sizeof(struct sockaddr_in6);
 			memcpy(&((struct sockaddr_in6 *)psa)->sin6_addr, hap,
 			    ai->ai_addrlen);
+			if (((struct sockaddr_in6 *)psa)->sin6_addr[0] == 0xfe && ((struct sockaddr_in6 *)psa)->sin6_addr[0] == 0x80)
+			    ((struct sockaddr_in6 *)psa)->sin6_scope_id = ((struct ipv6_address_t*) hap)->if_idx;
 			break;
 		default:
 			ai->ai_addrlen = sizeof(struct sockaddr_storage);
