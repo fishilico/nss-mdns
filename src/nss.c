@@ -174,7 +174,11 @@ static void ipv6_gai_callback(const ipv6_address_t *ipv6, void *userdata) {
     u->list_base[u->list_idx].name = 0;
     u->list_base[u->list_idx].family = AF_INET6;
     memcpy(u->list_base[u->list_idx].addr, ipv6->address, sizeof(u->list_base[u->list_idx].addr));
-    u->list_base[u->list_idx].scopeid = ipv6->if_idx;
+    if (ipv6->address[0] == 0xfe && ipv6->address[1] == 0x80) {
+        u->list_base[u->list_idx].scopeid = ipv6->if_idx;
+    } else {
+        u->list_base[u->list_idx].scopeid = 0;
+    }
     if (u->list_idx > 0) u->list_base[u->list_idx-1].next = &u->list_base[u->list_idx];
     u->list_base[u->list_idx].next = 0;
     u->list_idx += 1;
