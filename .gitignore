@@ -16,6 +16,17 @@
 /config.status
 /config.sub
 /configure
+/debian/autoreconf.*
+/debian/files
+/debian/lib32nss-mdns.debhelper.log
+/debian/lib32nss-mdns.substvars
+/debian/lib32nss-mdns/
+/debian/libnss-mdns.debhelper.log
+/debian/libnss-mdns.postinst.debhelper
+/debian/libnss-mdns.postrm.debhelper
+/debian/libnss-mdns.substvars
+/debian/libnss-mdns/
+/debian/tmp/
 /depcomp
 /doc/README
 /doc/README.html
