@@ -1,3 +1,10 @@
+nss-mdns (0.10-7) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Add link-local IPv6 address scope in NSS interface.
+
+ -- Nicolas Iooss <nicolas.iooss_debian@m4x.org>  Fri, 11 Apr 2014 22:24:50 +0200
+
 nss-mdns (0.10-6) unstable; urgency=low
 
   * Bring back a transitional lib32nss-mdns on amd64. It depends on
